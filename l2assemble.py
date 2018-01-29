@@ -576,6 +576,35 @@ class S3File(DiskFile):
         super(S3File, self).close()
 
 
+class SNSTopic:
+    def __init__(self, region_name, topic_name):
+        import boto3
+        logger.debug('Publishing to SNS topic: %s %s', region_name, topic_name)
+        self.region_name = region_name
+        self.topic_name = topic_name
+        self._sns = boto3.client('sns', region_name=self.region_name)
+
+    def _create_topic(self):
+        # if a topic with the specified name exists, that topic's
+        # ARN is returned without creating a new topic.
+        topic = self._sns.create_topic(Name=self.topic_name)
+        return topic.get('TopicArn')
+
+    def publish_message(self, message):
+        import botocore.exceptions
+        try:
+            # Publish to SNS
+            logger.debug('Publishing notification to SNS topic: %s %s)', self.region_name, self.topic_name)
+            topic_arn = self._create_topic()
+            response = self._sns.publish(Message=message, TopicArn=topic_arn)
+            status_code = response.get('ResponseMetadata').get('HTTPStatusCode')
+            if not status_code == 200:
+                logger.error('SNS message was not published: %s: %s', topic_arn, message)
+        except botocore.exceptions.ClientError as e:
+            logger.error(str(e))
+            raise IOError from e
+
+
 #
 # Coroutines for handling S3 and saving volumes
 #
